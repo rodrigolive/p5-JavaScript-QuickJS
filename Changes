@@ -1,5 +1,10 @@
 Revision history for Perl extension JavaScript::QuickJS:
 
+0.22 TBD 2024
+- Update to latest QuickJS (a424f71) from fg_patches_2025_04_26 branch, bringing
+  improvements including Float16Array, RegExp.escape, JS_PrintValue() API,
+  better JSON parsing, Promise.try, and many other enhancements from 2025.
+
 0.21 Sec 14 Feb 2024
 - Documentation updates. (No functional changes.)
 
