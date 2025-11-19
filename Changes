@@ -4,6 +4,11 @@ Revision history for Perl extension JavaScript::QuickJS:
 - Update to latest QuickJS (a424f71) from fg_patches_2025_04_26 branch, bringing
   improvements including Float16Array, RegExp.escape, JS_PrintValue() API,
   better JSON parsing, Promise.try, and many other enhancements from 2025.
+- Add JS_TAG_STRING_ROPE support to fix "Cannot convert (unexpected) JS tag
+  value -6 to Perl!" error with newer QuickJS versions.
+- Fix non-enumerable properties on Perl hashrefs converted to JavaScript objects.
+  Object.keys(), JSON.stringify(), for...in loops, and spread operator now work
+  correctly with objects created from Perl hashes.
 
 0.21 Sec 14 Feb 2024
 - Documentation updates. (No functional changes.)

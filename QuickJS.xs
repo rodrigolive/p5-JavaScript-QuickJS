@@ -533,7 +533,7 @@ static JSValue _sv_to_jsvalue(pTHX_ JSContext* ctx, SV* value, SV** error_svp) {
                         JSAtom prop = JS_NewAtomLen(ctx, key, keylen);
 
                         /* NB: ctx takes over jsval. */
-                        JS_DefinePropertyValue(ctx, jsobj, prop, jsval, JS_PROP_WRITABLE);
+                        JS_DefinePropertyValue(ctx, jsobj, prop, jsval, JS_PROP_C_W_E);
 
                         JS_FreeAtom(ctx, prop);
                     }
@@ -955,7 +955,7 @@ set_globals (SV* self_sv, ...)
 
         for (int i=0; i < valscount; i++) {
             /* NB: ctx takes over jsval. */
-            JS_DefinePropertyValue(pqjs->ctx, jsglobal, jsnames[i], jsvals[i], JS_PROP_WRITABLE);
+            JS_DefinePropertyValue(pqjs->ctx, jsglobal, jsnames[i], jsvals[i], JS_PROP_C_W_E);
             JS_FreeAtom(pqjs->ctx, jsnames[i]);
         }
 
