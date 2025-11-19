@@ -47,6 +47,8 @@ const char* __jstype_name_back[] = {
     [JS_TAG_BIG_INT - JS_TAG_FIRST] = "big integer",
     [JS_TAG_SHORT_BIG_INT - JS_TAG_FIRST] = "short big integer",
     [JS_TAG_SYMBOL - JS_TAG_FIRST] = "symbol",
+    [JS_TAG_STRING - JS_TAG_FIRST] = "string",
+    [JS_TAG_STRING_ROPE - JS_TAG_FIRST] = "string rope",
     [JS_TAG_MODULE - JS_TAG_FIRST] = "module",
     [JS_TAG_OBJECT - JS_TAG_FIRST] = "object",
     [JS_TAG_FLOAT64 - JS_TAG_FIRST] = "float64",
@@ -219,6 +221,7 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp) {
 
     switch (tag) {
         case JS_TAG_STRING:
+        case JS_TAG_STRING_ROPE:
             STMT_START {
                 STRLEN strlen;
                 const char* str = JS_ToCStringLen(ctx, &strlen, jsval);
