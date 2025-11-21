@@ -413,10 +413,28 @@ static JSValue _sviv_to_js(pTHX_ JSContext* ctx, SV* value) {
     return JS_NewInt32(ctx, (int32_t) SvIV(value));
 }
 
+/* Custom type detection that prioritizes numeric flags over string flags.
+ * This handles Perl's dual-valued scalars correctly - when a number has been
+ * stringified, Perl sets both IOK/NOK and POK flags. We want to preserve
+ * the numeric type in JavaScript rather than converting to string.
+ */
+static inline exs_sv_type_e _sv_type_numeric_priority(pTHX_ SV* sv) {
+    if (!SvOK(sv)) return EXS_SVTYPE_UNDEF;
+    if (SvROK(sv)) return EXS_SVTYPE_REFERENCE;
+    if (SvIsBOOL(sv)) return EXS_SVTYPE_BOOLEAN;
+    /* Check numeric flags before string flag */
+    if (SvUOK(sv)) return EXS_SVTYPE_UV;
+    if (SvIOK(sv)) return EXS_SVTYPE_IV;
+    if (SvNOK(sv)) return EXS_SVTYPE_NV;
+    /* Only treat as string if no numeric flags are set */
+    if (SvPOK(sv)) return EXS_SVTYPE_STRING;
+    return EXS_SVTYPE_UNKNOWN;
+}
+
 static JSValue _sv_to_jsvalue(pTHX_ JSContext* ctx, SV* value, SV** error_svp) {
     SvGETMAGIC(value);
 
-    switch ( exs_sv_type(value) ) {
+    switch ( _sv_type_numeric_priority(aTHX_ value) ) {
         case EXS_SVTYPE_UNDEF:
             return JS_NULL;
 

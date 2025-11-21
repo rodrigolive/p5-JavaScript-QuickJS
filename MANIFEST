@@ -82,6 +82,7 @@ t/callback_err.t
 t/callback_invalid_sv.t
 t/date.t
 t/date_invalid_input.t
+t/dual_valued_scalars.t
 t/export_ref.t
 t/func_call_invalid_input.t
 t/import_os.t
