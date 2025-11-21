@@ -4,6 +4,7 @@ MANIFEST
 Makefile.PL
 QuickJS.xs
 README.md
+UPGRADE_NOTES.md
 cpanfile
 easyxs/LICENSE
 easyxs/README.md
@@ -99,3 +100,8 @@ t/script_std.t
 t/set_globals.t
 t/strict.t
 t/enumerable.t
+t/nan_infinity.t
+t/nan_infinity_json.t
+t/object_stringification_debug.t
+t/object_to_perl.t
+t/object_to_perl_advanced.t

@@ -235,7 +235,16 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp) {
             break;
 
         case JS_TAG_FLOAT64:
-            RETVAL = newSVnv(JS_VALUE_GET_FLOAT64(jsval));
+            STMT_START {
+                double dval = JS_VALUE_GET_FLOAT64(jsval);
+                /* Convert NaN, Infinity, -Infinity to undef.
+                   These are not valid JSON values and cause serialization issues. */
+                if (isnan(dval) || isinf(dval)) {
+                    RETVAL = newSV(0);
+                } else {
+                    RETVAL = newSVnv(dval);
+                }
+            } STMT_END;
             break;
 
         case JS_TAG_BOOL:
@@ -469,7 +478,12 @@ static JSValue _sv_to_jsvalue(pTHX_ JSContext* ctx, SV* value, SV** error_svp) {
         } STMT_END;
 
         case EXS_SVTYPE_NV: STMT_START {
-            return JS_NewFloat64(ctx, (double) SvNV(value));
+            double dval = (double) SvNV(value);
+            /* Convert NaN/Infinity to null for JSON compatibility */
+            if (isnan(dval) || isinf(dval)) {
+                return JS_NULL;
+            }
+            return JS_NewFloat64(ctx, dval);
         } STMT_END;
 
         case EXS_SVTYPE_REFERENCE:

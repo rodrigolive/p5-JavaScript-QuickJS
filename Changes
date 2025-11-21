@@ -9,6 +9,10 @@ Revision history for Perl extension JavaScript::QuickJS:
 - Fix non-enumerable properties on Perl hashrefs converted to JavaScript objects.
   Object.keys(), JSON.stringify(), for...in loops, and spread operator now work
   correctly with objects created from Perl hashes.
+- CRITICAL FIX: NaN/Infinity now return fresh undef SVs (newSV(0)) instead of
+  shared &PL_sv_undef, preventing JSON::XS from serializing them as invalid
+  'nan' tokens that break GraphQL parsers. REQUIRES module recompilation and
+  application restart. See UPGRADE_NOTES.md for details.
 
 0.21 Sec 14 Feb 2024
 - Documentation updates. (No functional changes.)
