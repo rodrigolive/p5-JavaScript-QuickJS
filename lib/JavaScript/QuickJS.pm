@@ -57,15 +57,29 @@ XSLoader::load( __PACKAGE__, $VERSION );
 
 =head2 $obj = I<CLASS>->new( %CONFIG_OPTS )
 
-Instantiates I<CLASS>. %CONFIG_OPTS have the same effect as in
-C<configure()> below.
+Instantiates I<CLASS>. %CONFIG_OPTS can include options from
+C<configure()> below, plus:
+
+=over
+
+=item * C<preserve_types> - Boolean. When true, JavaScript primitive types
+(boolean, null, undefined) are returned as blessed Perl objects instead of
+plain scalars. This allows distinguishing between C<true>/C<false>, C<null>/C<undefined>,
+and C<1>/C<0>. Default: false (for backward compatibility).
+
+See L<JavaScript::QuickJS::Boolean>, L<JavaScript::QuickJS::Null>, and
+L<JavaScript::QuickJS::Undefined> for details on the blessed object types.
+
+=back
 
 =cut
 
 sub new {
     my ($class, %opts) = @_;
 
-    my $self = $class->_new();
+    my $preserve_types = delete $opts{preserve_types};
+
+    my $self = $class->_new($preserve_types);
 
     return %opts ? $self->configure(%opts) : $self;
 }
@@ -181,9 +195,17 @@ This module converts returned values from JavaScript thus:
 
 =item * JS string primitives become I<character> strings in Perl.
 
-=item * JS number & boolean primitives become corresponding Perl values.
+=item * JS number primitives become corresponding Perl values.
 
-=item * JS null & undefined become Perl undef.
+=item * JS boolean primitives become corresponding Perl values (1 or 0), B<unless>
+C<preserve_types =E<gt> 1> is enabled, in which case they become
+L<JavaScript::QuickJS::Boolean> objects.
+
+=item * JS null becomes Perl undef, B<unless> C<preserve_types =E<gt> 1> is enabled,
+in which case it becomes a L<JavaScript::QuickJS::Null> object.
+
+=item * JS undefined becomes Perl undef, B<unless> C<preserve_types =E<gt> 1> is enabled,
+in which case it becomes a L<JavaScript::QuickJS::Undefined> object.
 
 =item * JS objects …
 
@@ -200,6 +222,38 @@ and L<JavaScript::QuickJS::Date> objects, respectively.
 =item * Behaviour is B<UNDEFINED> for other object types.
 
 =back
+
+=back
+
+=head2 Type Preservation
+
+When C<preserve_types =E<gt> 1> is enabled, the blessed objects provide overloaded
+operators so they behave like their primitive counterparts in most contexts:
+
+    my $js = JavaScript::QuickJS->new(preserve_types => 1);
+    my $bool = $js->eval('true');
+
+    # Behaves like a boolean
+    if ($bool) { ... }           # truthy
+
+    # Can distinguish types
+    ref($bool)                   # 'JavaScript::QuickJS::Boolean'
+
+    # Stringifies/numifies correctly
+    "$bool"                      # 'true'
+    0 + $bool                    # 1
+
+This is useful when you need to:
+
+=over
+
+=item * Distinguish between boolean C<true> and number C<1>
+
+=item * Distinguish between boolean C<false> and number C<0> or empty string C<''>
+
+=item * Distinguish between JavaScript C<null> and JavaScript C<undefined>
+
+=item * Serialize back to JSON with correct types
 
 =back
 
@@ -345,6 +399,26 @@ falsy value.
 If you don’t know what any of that means, you can probably ignore it.
 
 =head1 SEE ALSO
+
+This distribution includes these additional modules:
+
+=over
+
+=item * L<JavaScript::QuickJS::Boolean> - Blessed boolean type (when C<preserve_types =E<gt> 1>)
+
+=item * L<JavaScript::QuickJS::Null> - Blessed null type (when C<preserve_types =E<gt> 1>)
+
+=item * L<JavaScript::QuickJS::Undefined> - Blessed undefined type (when C<preserve_types =E<gt> 1>)
+
+=item * L<JavaScript::QuickJS::Function> - JavaScript function wrapper
+
+=item * L<JavaScript::QuickJS::RegExp> - JavaScript RegExp wrapper
+
+=item * L<JavaScript::QuickJS::Date> - JavaScript Date wrapper
+
+=item * L<JavaScript::QuickJS::Promise> - JavaScript Promise wrapper
+
+=back
 
 Other JavaScript modules on CPAN include:
 

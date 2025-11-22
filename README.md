@@ -38,8 +38,16 @@ your system.
 
 ## $obj = _CLASS_->new( %CONFIG\_OPTS )
 
-Instantiates _CLASS_. %CONFIG\_OPTS have the same effect as in
-`configure()` below.
+Instantiates _CLASS_. %CONFIG\_OPTS can include options from
+`configure()` below, plus:
+
+- `preserve_types` - Boolean. When true, JavaScript primitive types
+(boolean, null, undefined) are returned as blessed Perl objects instead of
+plain scalars. This allows distinguishing between `true`/`false`, `null`/`undefined`,
+and `1`/`0`. Default: false (for backward compatibility).
+
+See [JavaScript::QuickJS::Boolean](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ABoolean), [JavaScript::QuickJS::Null](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ANull), and
+[JavaScript::QuickJS::Undefined](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3AUndefined) for details on the blessed object types.
 
 ## $obj = _OBJ_->configure( %OPTS )
 
@@ -123,15 +131,39 @@ Returns _OBJ_.
 This module converts returned values from JavaScript thus:
 
 - JS string primitives become _character_ strings in Perl.
-- JS number & boolean primitives become corresponding Perl values.
-- JS null & undefined become Perl undef.
+- JS number primitives become corresponding Perl values.
+- JS boolean primitives become corresponding Perl values (1 or 0), **unless**
+`preserve_types => 1` is enabled, in which case they become
+[JavaScript::QuickJS::Boolean](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ABoolean) objects.
+- JS null becomes Perl undef, **unless** `preserve_types => 1` is enabled,
+in which case it becomes a [JavaScript::QuickJS::Null](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ANull) object.
+- JS undefined becomes Perl undef, **unless** `preserve_types => 1` is enabled,
+in which case it becomes a [JavaScript::QuickJS::Undefined](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3AUndefined) object.
 - JS objects …
     - Arrays become Perl array references.
-    - “Plain” objects become Perl hash references.
+    - "Plain" objects become Perl hash references.
     - Function, RegExp, and Date objects become Perl
     [JavaScript::QuickJS::Function](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3AFunction), [JavaScript::QuickJS::RegExp](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ARegExp),
     and [JavaScript::QuickJS::Date](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ADate) objects, respectively.
     - Behaviour is **UNDEFINED** for other object types.
+
+## Type Preservation
+
+When `preserve_types => 1` is enabled, the blessed objects provide overloaded
+operators so they behave like their primitive counterparts in most contexts:
+
+    my $js = JavaScript::QuickJS->new(preserve_types => 1);
+    my $bool = $js->eval('true');
+
+    # Behaves like a boolean
+    if ($bool) { ... }           # truthy
+
+    # Can distinguish types
+    ref($bool)                   # 'JavaScript::QuickJS::Boolean'
+
+    # Stringifies/numifies correctly
+    "$bool"                      # 'true'
+    0 + $bool                    # 1
 
 # TYPE CONVERSION: PERL → JAVASCRIPT
 
@@ -261,6 +293,16 @@ falsy value.
 If you don’t know what any of that means, you can probably ignore it.
 
 # SEE ALSO
+
+This distribution includes these additional modules:
+
+- [JavaScript::QuickJS::Boolean](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ABoolean) - Blessed boolean type (when `preserve_types => 1`)
+- [JavaScript::QuickJS::Null](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ANull) - Blessed null type (when `preserve_types => 1`)
+- [JavaScript::QuickJS::Undefined](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3AUndefined) - Blessed undefined type (when `preserve_types => 1`)
+- [JavaScript::QuickJS::Function](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3AFunction) - JavaScript function wrapper
+- [JavaScript::QuickJS::RegExp](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ARegExp) - JavaScript RegExp wrapper
+- [JavaScript::QuickJS::Date](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ADate) - JavaScript Date wrapper
+- [JavaScript::QuickJS::Promise](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3APromise) - JavaScript Promise wrapper
 
 Other JavaScript modules on CPAN include:
 

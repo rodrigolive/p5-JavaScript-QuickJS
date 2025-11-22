@@ -21,6 +21,7 @@ typedef struct {
     bool added_std;
     bool added_os;
     bool added_helpers;
+    bool preserve_types;
     char* module_base_path;
 } perl_qjs_s;
 
@@ -38,6 +39,7 @@ typedef struct {
     U32 svs_count;
     U32 refcount;
     bool ran_js_std_init_handlers;
+    bool preserve_types;
     JSValue regexp_jsvalue;
     JSValue date_jsvalue;
     JSValue promise_jsvalue;
@@ -114,7 +116,98 @@ const char* const DATE_SETTER_FROM_IX[] = {
 
 #define _jstype_name(typenum) __jstype_name_back[ typenum - JS_TAG_FIRST ]
 
-static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp);
+/* Helper: Create JavaScript::QuickJS::Boolean object */
+static SV* create_boolean_sv(pTHX_ JSContext *ctx, int value) {
+    dSP;
+
+    load_module(
+        PERL_LOADMOD_NOIMPORT,
+        newSVpvs(PERL_NS_ROOT "::Boolean"),
+        NULL
+    );
+
+    ENTER;
+    SAVETMPS;
+
+    PUSHMARK(SP);
+    XPUSHs(sv_2mortal(newSVpv(PERL_NS_ROOT "::Boolean", 0)));
+    XPUSHs(sv_2mortal(newSViv(value ? 1 : 0)));
+    PUTBACK;
+
+    call_method("new", G_SCALAR);
+
+    SPAGAIN;
+    SV* result = POPs;
+    SvREFCNT_inc(result);
+    PUTBACK;
+
+    FREETMPS;
+    LEAVE;
+
+    return result;
+}
+
+/* Helper: Create JavaScript::QuickJS::Null object */
+static SV* create_null_sv(pTHX_ JSContext *ctx) {
+    dSP;
+
+    load_module(
+        PERL_LOADMOD_NOIMPORT,
+        newSVpvs(PERL_NS_ROOT "::Null"),
+        NULL
+    );
+
+    ENTER;
+    SAVETMPS;
+
+    PUSHMARK(SP);
+    XPUSHs(sv_2mortal(newSVpv(PERL_NS_ROOT "::Null", 0)));
+    PUTBACK;
+
+    call_method("new", G_SCALAR);
+
+    SPAGAIN;
+    SV* result = POPs;
+    SvREFCNT_inc(result);
+    PUTBACK;
+
+    FREETMPS;
+    LEAVE;
+
+    return result;
+}
+
+/* Helper: Create JavaScript::QuickJS::Undefined object */
+static SV* create_undefined_sv(pTHX_ JSContext *ctx) {
+    dSP;
+
+    load_module(
+        PERL_LOADMOD_NOIMPORT,
+        newSVpvs(PERL_NS_ROOT "::Undefined"),
+        NULL
+    );
+
+    ENTER;
+    SAVETMPS;
+
+    PUSHMARK(SP);
+    XPUSHs(sv_2mortal(newSVpv(PERL_NS_ROOT "::Undefined", 0)));
+    PUTBACK;
+
+    call_method("new", G_SCALAR);
+
+    SPAGAIN;
+    SV* result = POPs;
+    SvREFCNT_inc(result);
+    PUTBACK;
+
+    FREETMPS;
+    LEAVE;
+
+    return result;
+}
+
+static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types);
 
 static inline SV* _JSValue_special_object_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, const char* class) {
     assert(!*err_svp);
@@ -134,7 +227,7 @@ static inline SV* _JSValue_special_object_to_SV (pTHX_ JSContext* ctx, JSValue j
     return sv;
 }
 
-static inline SV* _JSValue_object_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp) {
+static inline SV* _JSValue_object_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types) {
     assert(!*err_svp);
 
     JSPropertyEnum *tab_atom;
@@ -154,7 +247,7 @@ static inline SV* _JSValue_object_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV
 
         JSValue value = JS_GetProperty(ctx, jsval, tab_atom[i].atom);
 
-        SV* val_sv = _JSValue_to_SV(aTHX_ ctx, value, err_svp);
+        SV* val_sv = _JSValue_to_SV(aTHX_ ctx, value, err_svp, preserve_types);
 
         if (val_sv) {
             hv_store(hv, keystr, -strlen, val_sv, 0);
@@ -178,7 +271,7 @@ static inline SV* _JSValue_object_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV
     return newRV_noinc((SV*) hv);
 }
 
-static inline SV* _JSValue_array_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp) {
+static inline SV* _JSValue_array_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types) {
     JSValue jslen = JS_GetPropertyStr(ctx, jsval, "length");
     uint32_t len;
     JS_ToUint32(ctx, &len, jslen);
@@ -191,7 +284,7 @@ static inline SV* _JSValue_array_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV*
         for (uint32_t i=0; i<len; i++) {
             JSValue jsitem = JS_GetPropertyUint32(ctx, jsval, i);
 
-            SV* val_sv = _JSValue_to_SV(aTHX_ ctx, jsitem, err_svp);
+            SV* val_sv = _JSValue_to_SV(aTHX_ ctx, jsitem, err_svp, preserve_types);
 
             if (val_sv) av_store( av, i, val_sv );
 
@@ -210,7 +303,7 @@ static inline SV* _JSValue_array_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV*
 }
 
 /* NO JS exceptions allowed here! */
-static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp) {
+static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types) {
     assert(!*err_svp);
 
     SV* RETVAL;
@@ -248,12 +341,27 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp) {
             break;
 
         case JS_TAG_BOOL:
-            RETVAL = boolSV(JS_VALUE_GET_BOOL(jsval));
+            if (preserve_types) {
+                RETVAL = create_boolean_sv(aTHX_ ctx, JS_VALUE_GET_BOOL(jsval));
+            } else {
+                RETVAL = boolSV(JS_VALUE_GET_BOOL(jsval));
+            }
             break;
 
         case JS_TAG_NULL:
+            if (preserve_types) {
+                RETVAL = create_null_sv(aTHX_ ctx);
+            } else {
+                RETVAL = &PL_sv_undef;
+            }
+            break;
+
         case JS_TAG_UNDEFINED:
-            RETVAL = &PL_sv_undef;
+            if (preserve_types) {
+                RETVAL = create_undefined_sv(aTHX_ ctx);
+            } else {
+                RETVAL = &PL_sv_undef;
+            }
             break;
 
         case JS_TAG_OBJECT:
@@ -279,7 +387,7 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp) {
                 RETVAL = func_sv;
             }
             else if (JS_IsArray(ctx, jsval)) {
-                RETVAL = _JSValue_array_to_SV(aTHX_ ctx, jsval, err_svp);
+                RETVAL = _JSValue_array_to_SV(aTHX_ ctx, jsval, err_svp, preserve_types);
             }
             else {
 
@@ -295,7 +403,7 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp) {
                     RETVAL = _JSValue_special_object_to_SV(aTHX_ ctx, jsval, err_svp, PQJS_PROMISE_CLASS);
                 }
                 else {
-                    RETVAL = _JSValue_object_to_SV(aTHX_ ctx, jsval, err_svp);
+                    RETVAL = _JSValue_object_to_SV(aTHX_ ctx, jsval, err_svp, preserve_types);
                 }
             }
 
@@ -372,8 +480,9 @@ static JSValue _sv_error_to_jsvalue(pTHX_ JSContext* ctx, SV* error) {
 
 static JSValue __do_perl_callback(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv, int jsmagic, JSValue *func_data) {
 
-#ifdef MULTIPLICITY
     ctx_opaque_s* ctxdata = JS_GetContextOpaque(ctx);
+
+#ifdef MULTIPLICITY
     pTHX = ctxdata->aTHX;
 #endif
 
@@ -386,7 +495,7 @@ static JSValue __do_perl_callback(JSContext *ctx, JSValueConst this_val, int arg
     SV* error_sv = NULL;
 
     for (int a=0; a<argc; a++) {
-        args[a] = _JSValue_to_SV(aTHX_ ctx, argv[a], &error_sv);
+        args[a] = _JSValue_to_SV(aTHX_ ctx, argv[a], &error_sv, ctxdata->preserve_types);
 
         if (error_sv) {
             while (--a >= 0) {
@@ -586,7 +695,7 @@ static JSValue _sv_to_jsvalue(pTHX_ JSContext* ctx, SV* value, SV** error_svp) {
     return JS_NULL;
 }
 
-static JSContext* _create_new_jsctx( pTHX_ JSRuntime *rt ) {
+static JSContext* _create_new_jsctx( pTHX_ JSRuntime *rt, int preserve_types ) {
     JSContext *ctx = JS_NewContext(rt);
 
     ctx_opaque_s* ctxdata;
@@ -597,6 +706,7 @@ static JSContext* _create_new_jsctx( pTHX_ JSRuntime *rt ) {
 
     *ctxdata = (ctx_opaque_s) {
         .refcount = 1,
+        .preserve_types = preserve_types,
         .regexp_jsvalue = JS_GetPropertyStr(ctx, global, "RegExp"),
         .date_jsvalue = JS_GetPropertyStr(ctx, global, "Date"),
         .promise_jsvalue = JS_GetPropertyStr(ctx, global, "Promise"),
@@ -639,6 +749,7 @@ static SV* _get_exception_from_jsvalue(pTHX_ JSContext* ctx, JSValue jsret) {
 static inline SV* _return_jsvalue_or_croak(pTHX_ JSContext* ctx, JSValue jsret) {
     SV* err;
     SV* RETVAL;
+    ctx_opaque_s* ctxdata = JS_GetContextOpaque(ctx);
 
     if (JS_IsException(jsret)) {
         err = _get_exception_from_jsvalue(aTHX_ ctx, jsret);
@@ -646,7 +757,7 @@ static inline SV* _return_jsvalue_or_croak(pTHX_ JSContext* ctx, JSValue jsret) 
     }
     else {
         err = NULL;
-        RETVAL = _JSValue_to_SV(aTHX_ ctx, jsret, &err);
+        RETVAL = _JSValue_to_SV(aTHX_ ctx, jsret, &err, ctxdata->preserve_types);
     }
 
     JS_FreeValue(ctx, jsret);
@@ -781,13 +892,15 @@ MODULE = JavaScript::QuickJS        PACKAGE = JavaScript::QuickJS
 PROTOTYPES: DISABLE
 
 SV*
-_new (SV* classname_sv)
+_new (SV* classname_sv, SV* preserve_types_sv=&PL_sv_undef)
     CODE:
+        int preserve_types = SvOK(preserve_types_sv) && SvTRUE(preserve_types_sv) ? 1 : 0;
+
         JSRuntime *rt = JS_NewRuntime();
         JS_SetHostPromiseRejectionTracker(rt, js_std_promise_rejection_tracker, NULL);
         JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);
 
-        JSContext *ctx = _create_new_jsctx(aTHX_ rt);
+        JSContext *ctx = _create_new_jsctx(aTHX_ rt, preserve_types);
 
         RETVAL = exs_new_structref(perl_qjs_s, SvPVbyte_nolen(classname_sv));
         perl_qjs_s* pqjs = exs_structref_ptr(RETVAL);
@@ -795,6 +908,7 @@ _new (SV* classname_sv)
         *pqjs = (perl_qjs_s) {
             .ctx = ctx,
             .pid = getpid(),
+            .preserve_types = preserve_types,
         };
 
         JS_SetModuleLoaderFunc(
@@ -1228,12 +1342,13 @@ flags( SV* self_sv)
         lastIndex = 9
     CODE:
         perl_qjs_jsobj_s* pqjs = exs_structref_ptr(self_sv);
+        ctx_opaque_s* ctxdata = JS_GetContextOpaque(pqjs->ctx);
 
         JSValue myret = JS_GetPropertyStr(pqjs->ctx, pqjs->jsobj, _REGEXP_ACCESSORS[ix]);
 
         SV* err = NULL;
 
-        RETVAL = _JSValue_to_SV(aTHX_ pqjs->ctx, myret, &err);
+        RETVAL = _JSValue_to_SV(aTHX_ pqjs->ctx, myret, &err, ctxdata->preserve_types);
 
         JS_FreeValue(pqjs->ctx, myret);
 
@@ -1276,12 +1391,13 @@ length( SV* self_sv)
         name = 1
     CODE:
         perl_qjs_jsobj_s* pqjs = exs_structref_ptr(self_sv);
+        ctx_opaque_s* ctxdata = JS_GetContextOpaque(pqjs->ctx);
 
         JSValue myret = JS_GetPropertyStr(pqjs->ctx, pqjs->jsobj, _FUNCTION_ACCESSORS[ix]);
 
         SV* err = NULL;
 
-        RETVAL = _JSValue_to_SV(aTHX_ pqjs->ctx, myret, &err);
+        RETVAL = _JSValue_to_SV(aTHX_ pqjs->ctx, myret, &err, ctxdata->preserve_types);
 
         JS_FreeValue(pqjs->ctx, myret);
 

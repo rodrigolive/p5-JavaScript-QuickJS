@@ -18,10 +18,13 @@ easyxs/easyxs_structref.h
 easyxs/init.h
 easyxs/ppport.h
 lib/JavaScript/QuickJS.pm
+lib/JavaScript/QuickJS/Boolean.pm
 lib/JavaScript/QuickJS/Date.pm
 lib/JavaScript/QuickJS/Function.pm
+lib/JavaScript/QuickJS/Null.pm
 lib/JavaScript/QuickJS/Promise.pm
 lib/JavaScript/QuickJS/RegExp.pm
+lib/JavaScript/QuickJS/Undefined.pm
 quickjs/Changelog
 quickjs/LICENSE
 quickjs/Makefile
@@ -105,3 +108,4 @@ t/nan_infinity_json.t
 t/object_stringification_debug.t
 t/object_to_perl.t
 t/object_to_perl_advanced.t
+t/preserve_types.t
