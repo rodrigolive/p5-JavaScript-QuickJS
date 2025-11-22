@@ -781,6 +781,11 @@ static void _free_jsctx(pTHX_ JSContext* ctx) {
             SvREFCNT_dec(ctxdata->svs[i]);
         }
 
+        // Run GC to collect JS objects that depended on Perl callbacks.
+        // Two passes handle cascading cleanup of multi-level references.
+        JS_RunGC(rt);
+        JS_RunGC(rt);
+
         if (ctxdata->ran_js_std_init_handlers) {
             js_std_free_handlers(rt);
         }
