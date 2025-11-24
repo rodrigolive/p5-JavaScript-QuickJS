@@ -632,7 +632,13 @@ static JSValue _sv_to_jsvalue(pTHX_ JSContext* ctx, SV* value, SV** error_svp) {
                 case SVt_PVAV: STMT_START {
                     AV* av = (AV*) SvRV(value);
                     JSValue jsarray = JS_NewArray(ctx);
-                    JS_SetPropertyStr(ctx, jsarray, "length", JS_NewUint32(ctx, 1 + av_len(av)));
+
+                    /* Make length property enumerable */
+                    JSAtom length_atom = JS_NewAtom(ctx, "length");
+                    JS_DefinePropertyValue(ctx, jsarray, length_atom,
+                                         JS_NewUint32(ctx, 1 + av_len(av)),
+                                         JS_PROP_C_W_E);
+                    JS_FreeAtom(ctx, length_atom);
 
                     for (int32_t i=0; i <= av_len(av); i++) {
                         SV** svp = av_fetch(av, i, 0);
@@ -646,7 +652,10 @@ static JSValue _sv_to_jsvalue(pTHX_ JSContext* ctx, SV* value, SV** error_svp) {
                             return _sv_error_to_jsvalue(aTHX_ ctx, *error_svp);
                         }
 
-                        JS_SetPropertyUint32(ctx, jsarray, i, jsval);
+                        /* Make array indices enumerable */
+                        JSAtom idx_atom = JS_NewAtomUInt32(ctx, i);
+                        JS_DefinePropertyValue(ctx, jsarray, idx_atom, jsval, JS_PROP_C_W_E);
+                        JS_FreeAtom(ctx, idx_atom);
                     }
 
                     return jsarray;
