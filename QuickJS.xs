@@ -348,19 +348,15 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, in
             break;
 
         case JS_TAG_NULL:
-            if (preserve_types) {
-                RETVAL = create_null_sv(aTHX_ ctx);
-            } else {
-                RETVAL = &PL_sv_undef;
-            }
+            // Always return plain undef for null, even with preserve_types
+            // The distinction between null and undefined is rarely needed in Perl
+            RETVAL = &PL_sv_undef;
             break;
 
         case JS_TAG_UNDEFINED:
-            if (preserve_types) {
-                RETVAL = create_undefined_sv(aTHX_ ctx);
-            } else {
-                RETVAL = &PL_sv_undef;
-            }
+            // Always return plain undef for undefined, even with preserve_types
+            // The distinction between null and undefined is rarely needed in Perl
+            RETVAL = &PL_sv_undef;
             break;
 
         case JS_TAG_OBJECT:
@@ -553,7 +549,7 @@ static JSValue _sv_to_jsvalue(pTHX_ JSContext* ctx, SV* value, SV** error_svp) {
 
     switch ( _sv_type_numeric_priority(aTHX_ value) ) {
         case EXS_SVTYPE_UNDEF:
-            return JS_NULL;
+            return JS_UNDEFINED;
 
         case EXS_SVTYPE_BOOLEAN:
             return JS_NewBool(ctx, SvTRUE(value));
@@ -600,6 +596,14 @@ static JSValue _sv_to_jsvalue(pTHX_ JSContext* ctx, SV* value, SV** error_svp) {
                 if (sv_derived_from(value, PERL_BOOLEAN_CLASS) ||
                     sv_derived_from(value, "JSON::PP::Boolean")) {
                     return JS_NewBool(ctx, SvTRUE(SvRV(value)));
+                }
+                // Support JavaScript::QuickJS::Null -> JS null
+                else if (sv_derived_from(value, PERL_NS_ROOT "::Null")) {
+                    return JS_NULL;
+                }
+                // Support JavaScript::QuickJS::Undefined -> JS undefined
+                else if (sv_derived_from(value, PERL_NS_ROOT "::Undefined")) {
+                    return JS_UNDEFINED;
                 }
                 else if (sv_derived_from(value, PQJS_JSOBJECT_CLASS)) {
                     perl_qjs_jsobj_s* pqjs = exs_structref_ptr(value);
