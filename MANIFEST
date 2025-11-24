@@ -109,3 +109,4 @@ t/object_stringification_debug.t
 t/object_to_perl.t
 t/object_to_perl_advanced.t
 t/preserve_types.t
+t/null_undefined.t

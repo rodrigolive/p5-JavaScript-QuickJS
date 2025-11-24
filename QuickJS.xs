@@ -348,15 +348,19 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, in
             break;
 
         case JS_TAG_NULL:
-            // Always return plain undef for null, even with preserve_types
-            // The distinction between null and undefined is rarely needed in Perl
-            RETVAL = &PL_sv_undef;
+            if (preserve_types) {
+                RETVAL = create_null_sv(aTHX_ ctx);
+            } else {
+                RETVAL = &PL_sv_undef;
+            }
             break;
 
         case JS_TAG_UNDEFINED:
-            // Always return plain undef for undefined, even with preserve_types
-            // The distinction between null and undefined is rarely needed in Perl
-            RETVAL = &PL_sv_undef;
+            if (preserve_types) {
+                RETVAL = create_undefined_sv(aTHX_ ctx);
+            } else {
+                RETVAL = &PL_sv_undef;
+            }
             break;
 
         case JS_TAG_OBJECT:

@@ -271,7 +271,9 @@ strings” from “numbers”. If your perl predates 5.36, typecast accordingly
 to prevent your Perl “number” from becoming a JavaScript string. (Even in
 5.36 and later it’s still a good idea.)
 
-=item * Perl undef becomes JS null.
+=item * Perl undef becomes JS undefined (as of version 0.22).
+
+=item * L<JavaScript::QuickJS::Null> objects become JS null.
 
 =item * Unblessed array & hash references become JavaScript arrays and
 “plain” objects.
@@ -287,6 +289,95 @@ JavaScript objects.
 =item * Anything else triggers an exception.
 
 =back
+
+=head1 NULL VS UNDEFINED HANDLING
+
+=head2 Breaking Change in Version 0.22
+
+Starting with version 0.22, Perl C<undef> converts to JavaScript C<undefined>
+instead of C<null>. This change provides semantic correctness and compatibility
+with JavaScript conventions.
+
+=head2 Key Behavior Changes
+
+  | Conversion                           | Before (≤0.21)     | After (≥0.22)      | Why                   |
+  |--------------------------------------|--------------------|--------------------|------------------------|
+  | Perl undef → JS                      | null ❌             | undefined ✅        | Semantic correctness  |
+  | Perl Null object → JS                | N/A ❌              | null ✅             | Explicit null support |
+  | Perl Undefined object → JS           | N/A ❌              | undefined ✅        | Round-trip support    |
+  | JS null → Perl (default)             | undef ✅            | undef ✅            | No change             |
+  | JS undefined → Perl (default)        | undef ✅            | undef ✅            | No change             |
+  | JS null → Perl (preserve_types)      | Null object ✅      | Null object ✅      | No change             |
+  | JS undefined → Perl (preserve_types) | Undefined object ✅ | Undefined object ✅ | No change             |
+
+=head2 Why This Change?
+
+In JavaScript, C<null> and C<undefined> have different semantics:
+
+=over
+
+=item * C<undefined> means "no value assigned" - the default for uninitialized variables,
+missing function parameters, and missing object properties.
+
+=item * C<null> means "intentional absence of value" - explicitly set by the programmer.
+
+=back
+
+This distinction matters for:
+
+=over
+
+=item * B<JSON serialization:> C<undefined> properties are omitted, C<null> properties
+are included.
+
+    // JavaScript
+    JSON.stringify({a: null, b: undefined})
+    // Result: '{"a":null}'  (b is omitted!)
+
+=item * B<Function parameters:> Missing parameters are C<undefined>, not C<null>.
+
+=item * B<JavaScript conventions:> Variables default to C<undefined>, not C<null>.
+
+=back
+
+=head2 Migration Guide
+
+If you need explicit C<null> values (e.g., for database NULLs or API requirements),
+use L<JavaScript::QuickJS::Null>:
+
+    use JavaScript::QuickJS::Null;
+
+    my $js = JavaScript::QuickJS->new();
+
+    $js->set_globals(
+        explicit_null => JavaScript::QuickJS::Null->new(),
+        regular_undef => undef,
+    );
+
+    $js->eval(q{
+        console.log(typeof explicit_null);  // "object" (null)
+        console.log(typeof regular_undef);  // "undefined"
+
+        console.log(explicit_null === null);      // true
+        console.log(regular_undef === undefined); // true
+    });
+
+With C<preserve_types =E<gt> 1>, JavaScript C<null> and C<undefined> values
+round-trip correctly:
+
+    my $js = JavaScript::QuickJS->new(preserve_types => 1);
+
+    my $null = $js->eval('null');
+    my $undef = $js->eval('undefined');
+
+    ref($null)   # 'JavaScript::QuickJS::Null'
+    ref($undef)  # 'JavaScript::QuickJS::Undefined'
+
+    # These round-trip back to JavaScript correctly
+    $js->set_globals(
+        null_val  => $null,
+        undef_val => $undef,
+    );
 
 =head1 MEMORY HANDLING NOTES
 

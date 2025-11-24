@@ -177,15 +177,101 @@ primitives.
     to prevent your Perl “number” from becoming a JavaScript string. (Even in
     5.36 and later it’s still a good idea.)
 
-- Perl undef becomes JS null.
+- Perl undef becomes JS undefined (as of version 0.22).
+- [JavaScript::QuickJS::Null](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ANull) objects become JS null.
 - Unblessed array & hash references become JavaScript arrays and
-“plain” objects.
+"plain" objects.
 - [Types::Serialiser](https://metacpan.org/pod/Types%3A%3ASerialiser) booleans become JavaScript booleans.
 - Perl code references become JavaScript functions.
 - Perl [JavaScript::QuickJS::Function](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3AFunction), [JavaScript::QuickJS::RegExp](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ARegExp),
 and [JavaScript::QuickJS::Date](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ADate) objects become their original
 JavaScript objects.
 - Anything else triggers an exception.
+
+# NULL VS UNDEFINED HANDLING
+
+## Breaking Change in Version 0.22
+
+Starting with version 0.22, Perl `undef` converts to JavaScript `undefined`
+instead of `null`. This change provides semantic correctness and compatibility
+with JavaScript conventions.
+
+## Key Behavior Changes
+
+| Conversion                           | Before (≤0.21)     | After (≥0.22)      | Why                   |
+|--------------------------------------|--------------------|--------------------|------------------------|
+| Perl undef → JS                      | null ❌             | undefined ✅        | Semantic correctness  |
+| Perl Null object → JS                | N/A ❌              | null ✅             | Explicit null support |
+| Perl Undefined object → JS           | N/A ❌              | undefined ✅        | Round-trip support    |
+| JS null → Perl (default)             | undef ✅            | undef ✅            | No change             |
+| JS undefined → Perl (default)        | undef ✅            | undef ✅            | No change             |
+| JS null → Perl (preserve_types)      | Null object ✅      | Null object ✅      | No change             |
+| JS undefined → Perl (preserve_types) | Undefined object ✅ | Undefined object ✅ | No change             |
+
+## Why This Change?
+
+In JavaScript, `null` and `undefined` have different semantics:
+
+- `undefined` means "no value assigned" - the default for uninitialized variables,
+  missing function parameters, and missing object properties.
+- `null` means "intentional absence of value" - explicitly set by the programmer.
+
+This distinction matters for:
+
+- **JSON serialization:** `undefined` properties are omitted, `null` properties
+  are included.
+
+  ```javascript
+  // JavaScript
+  JSON.stringify({a: null, b: undefined})
+  // Result: '{"a":null}'  (b is omitted!)
+  ```
+
+- **Function parameters:** Missing parameters are `undefined`, not `null`.
+- **JavaScript conventions:** Variables default to `undefined`, not `null`.
+
+## Migration Guide
+
+If you need explicit `null` values (e.g., for database NULLs or API requirements),
+use [JavaScript::QuickJS::Null](https://metacpan.org/pod/JavaScript%3A%3AQuickJS%3A%3ANull):
+
+```perl
+use JavaScript::QuickJS::Null;
+
+my $js = JavaScript::QuickJS->new();
+
+$js->set_globals(
+    explicit_null => JavaScript::QuickJS::Null->new(),
+    regular_undef => undef,
+);
+
+$js->eval(q{
+    console.log(typeof explicit_null);  // "object" (null)
+    console.log(typeof regular_undef);  // "undefined"
+
+    console.log(explicit_null === null);      // true
+    console.log(regular_undef === undefined); // true
+});
+```
+
+With `preserve_types => 1`, JavaScript `null` and `undefined` values
+round-trip correctly:
+
+```perl
+my $js = JavaScript::QuickJS->new(preserve_types => 1);
+
+my $null = $js->eval('null');
+my $undef = $js->eval('undefined');
+
+ref($null)   # 'JavaScript::QuickJS::Null'
+ref($undef)  # 'JavaScript::QuickJS::Undefined'
+
+# These round-trip back to JavaScript correctly
+$js->set_globals(
+    null_val  => $null,
+    undef_val => $undef,
+);
+```
 
 # MEMORY HANDLING NOTES
 
