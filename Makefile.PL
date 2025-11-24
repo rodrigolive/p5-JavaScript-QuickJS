@@ -321,8 +321,12 @@ sub postamble {
     # QuickJS requires GNU make.
     my $make = ($^O =~ m<bsd>i) ? $GMAKE_PATH : '$(MAKE)';
 
-    # The leading “+” is to ensure that parallel builds work properly.
+    # The leading "+" is to ensure that parallel builds work properly.
     return <<"MAKE_FRAG"
+
+# Prevent macOS extended attributes from being included in distribution tarballs
+TAR = COPY_EXTENDED_ATTRIBUTES_DISABLE=1 COPYFILE_DISABLE=1 tar
+TARFLAGS = --no-xattrs -cvf
 
 $libpath:
 \t+$make -C quickjs -f '$PERL_QJS_MAKEFILE_PATH' libquickjs.a
