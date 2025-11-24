@@ -7,7 +7,7 @@
 
 #define PERL_NS_ROOT "JavaScript::QuickJS"
 
-#define PERL_BOOLEAN_CLASS "Types::Serialiser::Boolean"
+#define PERL_BOOLEAN_CLASS "boolean"
 
 #define PQJS_JSOBJECT_CLASS PERL_NS_ROOT "::JSObject"
 #define PQJS_FUNCTION_CLASS PERL_NS_ROOT "::Function"
@@ -116,13 +116,13 @@ const char* const DATE_SETTER_FROM_IX[] = {
 
 #define _jstype_name(typenum) __jstype_name_back[ typenum - JS_TAG_FIRST ]
 
-/* Helper: Create JavaScript::QuickJS::Boolean object */
+/* Helper: Create boolean::true/false object */
 static SV* create_boolean_sv(pTHX_ JSContext *ctx, int value) {
     dSP;
 
     load_module(
         PERL_LOADMOD_NOIMPORT,
-        newSVpvs(PERL_NS_ROOT "::Boolean"),
+        newSVpvs("boolean"),
         NULL
     );
 
@@ -130,11 +130,10 @@ static SV* create_boolean_sv(pTHX_ JSContext *ctx, int value) {
     SAVETMPS;
 
     PUSHMARK(SP);
-    XPUSHs(sv_2mortal(newSVpv(PERL_NS_ROOT "::Boolean", 0)));
-    XPUSHs(sv_2mortal(newSViv(value ? 1 : 0)));
+    XPUSHs(sv_2mortal(newSVpv("boolean", 0)));
     PUTBACK;
 
-    call_method("new", G_SCALAR);
+    call_method(value ? "true" : "false", G_SCALAR);
 
     SPAGAIN;
     SV* result = POPs;
@@ -597,7 +596,9 @@ static JSValue _sv_to_jsvalue(pTHX_ JSContext* ctx, SV* value, SV** error_svp) {
 
         case EXS_SVTYPE_REFERENCE:
             if (sv_isobject(value)) {
-                if (sv_derived_from(value, PERL_BOOLEAN_CLASS)) {
+                // Accept both boolean and JSON::PP::Boolean (from Types::Serialiser)
+                if (sv_derived_from(value, PERL_BOOLEAN_CLASS) ||
+                    sv_derived_from(value, "JSON::PP::Boolean")) {
                     return JS_NewBool(ctx, SvTRUE(SvRV(value)));
                 }
                 else if (sv_derived_from(value, PQJS_JSOBJECT_CLASS)) {

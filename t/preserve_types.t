@@ -40,7 +40,7 @@ subtest 'Default behavior (preserve_types disabled)' => sub {
 # Test with preserve_types enabled
 subtest 'Type preservation enabled' => sub {
     plan skip_all => 'Boolean class not available'
-        unless eval { require JavaScript::QuickJS::Boolean; 1 };
+        unless eval { require boolean; 1 };
     plan skip_all => 'Null class not available'
         unless eval { require JavaScript::QuickJS::Null; 1 };
     plan skip_all => 'Undefined class not available'
@@ -48,19 +48,17 @@ subtest 'Type preservation enabled' => sub {
 
     my $js = JavaScript::QuickJS->new(preserve_types => 1);
 
-    # Test true
+    # Test true - now returns boolean objects from boolean module
     my $true = $js->eval('true');
-    isa_ok($true, 'JavaScript::QuickJS::Boolean', 'true');
-    ok($true->{value}, 'true has truthy value');
-    is("$true", 'true', 'true stringifies to "true"');
+    isa_ok($true, 'boolean', 'true');
+    is("$true", '1', 'true stringifies to "1"');
     is(0 + $true, 1, 'true numifies to 1');
     ok($true, 'true is truthy in boolean context');
 
     # Test false
     my $false = $js->eval('false');
-    isa_ok($false, 'JavaScript::QuickJS::Boolean', 'false');
-    ok(!$false->{value}, 'false has falsy value');
-    is("$false", 'false', 'false stringifies to "false"');
+    isa_ok($false, 'boolean', 'false');
+    is("$false", '0', 'false stringifies to "0"');
     is(0 + $false, 0, 'false numifies to 0');
     ok(!$false, 'false is falsy in boolean context');
 
@@ -93,7 +91,7 @@ subtest 'Types in objects' => sub {
         unless eval {
             my $js = JavaScript::QuickJS->new(preserve_types => 1);
             my $test = $js->eval('true');
-            ref($test) eq 'JavaScript::QuickJS::Boolean';
+            ref($test) eq 'boolean';
         };
 
     my $js = JavaScript::QuickJS->new(preserve_types => 1);
@@ -109,9 +107,9 @@ subtest 'Types in objects' => sub {
         })
     });
 
-    isa_ok($obj->{bool_true}, 'JavaScript::QuickJS::Boolean',
+    isa_ok($obj->{bool_true}, 'boolean',
            'object property true');
-    isa_ok($obj->{bool_false}, 'JavaScript::QuickJS::Boolean',
+    isa_ok($obj->{bool_false}, 'boolean',
            'object property false');
     isa_ok($obj->{null_val}, 'JavaScript::QuickJS::Null',
            'object property null');
@@ -128,53 +126,42 @@ subtest 'Types in arrays' => sub {
         unless eval {
             my $js = JavaScript::QuickJS->new(preserve_types => 1);
             my $test = $js->eval('true');
-            ref($test) eq 'JavaScript::QuickJS::Boolean';
+            ref($test) eq 'boolean';
         };
 
     my $js = JavaScript::QuickJS->new(preserve_types => 1);
 
     my $arr = $js->eval('[true, false, null, undefined, 42, "hi"]');
 
-    isa_ok($arr->[0], 'JavaScript::QuickJS::Boolean', 'array[0] true');
-    isa_ok($arr->[1], 'JavaScript::QuickJS::Boolean', 'array[1] false');
+    isa_ok($arr->[0], 'boolean', 'array[0] true');
+    isa_ok($arr->[1], 'boolean', 'array[1] false');
     isa_ok($arr->[2], 'JavaScript::QuickJS::Null', 'array[2] null');
     isa_ok($arr->[3], 'JavaScript::QuickJS::Undefined', 'array[3] undefined');
     is($arr->[4], 42, 'array[4] number');
     is($arr->[5], "hi", 'array[5] string');
 };
 
-# Test Boolean class directly
+# Test Boolean class directly - now uses boolean module
 subtest 'Boolean class' => sub {
     plan skip_all => 'Boolean class not available'
-        unless eval { require JavaScript::QuickJS::Boolean; 1 };
+        unless eval { require boolean; 1 };
 
-    # Test constructors
-    my $true = JavaScript::QuickJS::Boolean->true();
-    my $false = JavaScript::QuickJS::Boolean->false();
+    # Test constructors from boolean module
+    my $true = boolean::true();
+    my $false = boolean::false();
 
-    ok($true->{value}, 'true() creates true');
-    ok(!$false->{value}, 'false() creates false');
-
-    # Test new()
-    my $t = JavaScript::QuickJS::Boolean->new(1);
-    my $f = JavaScript::QuickJS::Boolean->new(0);
-
-    ok($t->{value}, 'new(1) creates true');
-    ok(!$f->{value}, 'new(0) creates false');
+    ok($true, 'true() is truthy');
+    ok(!$false, 'false() is falsy');
 
     # Test overloads
-    is("$true", "true", 'true stringifies');
-    is("$false", "false", 'false stringifies');
+    is("$true", "1", 'true stringifies to 1');
+    is("$false", "0", 'false stringifies to 0');
     is(0 + $true, 1, 'true numifies to 1');
     is(0 + $false, 0, 'false numifies to 0');
 
-    # Test TO_JSON
-    can_ok($true, 'TO_JSON');
-    my $tj = $true->TO_JSON();
-    my $fj = $false->TO_JSON();
-    is(ref($tj), 'SCALAR', 'TO_JSON returns scalar ref');
-    is($$tj, 1, 'true TO_JSON is \1');
-    is($$fj, 0, 'false TO_JSON is \0');
+    # Test boolean context
+    ok($true ? 1 : 0, 'true is true in boolean context');
+    ok(!$false ? 1 : 0, 'false is false in boolean context');
 };
 
 # Test Null class directly
