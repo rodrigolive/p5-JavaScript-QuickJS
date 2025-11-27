@@ -1061,10 +1061,6 @@ DESTROY (SV* self_sv)
     CODE:
         perl_qjs_s* pqjs = exs_structref_ptr(self_sv);
 
-        if (PL_dirty && pqjs->pid == getpid()) {
-            warn("DESTROYing %" SVf " at global destruction; memory leak likely!\n", self_sv);
-        }
-
         if (pqjs->module_base_path) Safefree(pqjs->module_base_path);
 
         _free_jsctx(aTHX_ pqjs->ctx);
@@ -1507,10 +1503,6 @@ void
 DESTROY( SV* self_sv )
     CODE:
         perl_qjs_jsobj_s* pqjs = exs_structref_ptr(self_sv);
-
-        if (PL_dirty && pqjs->pid == getpid()) {
-            warn("DESTROYing %" SVf " at global destruction; memory leak likely!\n", self_sv);
-        }
 
         JS_FreeValue(pqjs->ctx, pqjs->jsobj);
 
