@@ -9,3 +9,5 @@ Makefile.old
 *META.*
 .*.sw?
 *.tar.gz
+.agent/
+tests/

@@ -579,4 +579,10 @@ package JavaScript::QuickJS::Function;
 our @ISA;
 BEGIN { @ISA = 'JavaScript::QuickJS::JSObject' };
 
+# Load the Function.pm module which contains additional methods
+# This must be done at runtime to avoid circular dependencies
+eval { require JavaScript::QuickJS::Function; 1 } or do {
+    warn "Note: JavaScript::QuickJS::Function module not found: $@" if $@ && $@ !~ /^Can't locate/;
+};
+
 1;
