@@ -713,6 +713,116 @@ static JSValue _sv_to_jsvalue(pTHX_ JSContext* ctx, SV* value, SV** error_svp) {
     return JS_NULL;
 }
 
+// Base64 encoding/decoding for atob/btoa functions
+static const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static int base64_decode_char(char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    if (c == '=') return -1;
+    return -2;
+}
+
+// atob: decode base64 to binary string
+static JSValue js_atob(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    if (argc < 1) {
+        return JS_ThrowTypeError(ctx, "atob requires 1 argument");
+    }
+
+    size_t input_len;
+    const char *input = JS_ToCStringLen(ctx, &input_len, argv[0]);
+    if (!input) {
+        return JS_EXCEPTION;
+    }
+
+    // Calculate output length (max 3 bytes per 4 input chars)
+    size_t output_len = (input_len / 4) * 3;
+    if (input_len > 0 && input[input_len - 1] == '=') output_len--;
+    if (input_len > 1 && input[input_len - 2] == '=') output_len--;
+
+    char *output = js_malloc(ctx, output_len + 1);
+    if (!output) {
+        JS_FreeCString(ctx, input);
+        return JS_EXCEPTION;
+    }
+
+    size_t out_pos = 0;
+    for (size_t i = 0; i < input_len; i += 4) {
+        int b1 = base64_decode_char(input[i]);
+        int b2 = (i + 1 < input_len) ? base64_decode_char(input[i + 1]) : -1;
+        int b3 = (i + 2 < input_len) ? base64_decode_char(input[i + 2]) : -1;
+        int b4 = (i + 3 < input_len) ? base64_decode_char(input[i + 3]) : -1;
+
+        if (b1 == -2 || b2 == -2 || b3 == -2 || b4 == -2) {
+            js_free(ctx, output);
+            JS_FreeCString(ctx, input);
+            return JS_ThrowTypeError(ctx, "Invalid base64 string");
+        }
+
+        if (b1 >= 0 && b2 >= 0) {
+            output[out_pos++] = (b1 << 2) | (b2 >> 4);
+        }
+        if (b2 >= 0 && b3 >= 0) {
+            output[out_pos++] = ((b2 & 0x0F) << 4) | (b3 >> 2);
+        }
+        if (b3 >= 0 && b4 >= 0) {
+            output[out_pos++] = ((b3 & 0x03) << 6) | b4;
+        }
+    }
+
+    JS_FreeCString(ctx, input);
+
+    JSValue result = JS_NewStringLen(ctx, output, out_pos);
+    js_free(ctx, output);
+
+    return result;
+}
+
+// btoa: encode binary string to base64
+static JSValue js_btoa(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    if (argc < 1) {
+        return JS_ThrowTypeError(ctx, "btoa requires 1 argument");
+    }
+
+    size_t input_len;
+    const char *input = JS_ToCStringLen(ctx, &input_len, argv[0]);
+    if (!input) {
+        return JS_EXCEPTION;
+    }
+
+    // Calculate output length (4 chars per 3 input bytes, plus padding)
+    size_t output_len = ((input_len + 2) / 3) * 4;
+    char *output = js_malloc(ctx, output_len + 1);
+    if (!output) {
+        JS_FreeCString(ctx, input);
+        return JS_EXCEPTION;
+    }
+
+    size_t out_pos = 0;
+    for (size_t i = 0; i < input_len; i += 3) {
+        unsigned char b1 = input[i];
+        unsigned char b2 = (i + 1 < input_len) ? input[i + 1] : 0;
+        unsigned char b3 = (i + 2 < input_len) ? input[i + 2] : 0;
+
+        output[out_pos++] = base64_chars[b1 >> 2];
+        output[out_pos++] = base64_chars[((b1 & 0x03) << 4) | (b2 >> 4)];
+        output[out_pos++] = (i + 1 < input_len) ? base64_chars[((b2 & 0x0F) << 2) | (b3 >> 6)] : '=';
+        output[out_pos++] = (i + 2 < input_len) ? base64_chars[b3 & 0x3F] : '=';
+    }
+
+    output[out_pos] = '\0';
+
+    JS_FreeCString(ctx, input);
+
+    JSValue result = JS_NewString(ctx, output);
+    js_free(ctx, output);
+
+    return result;
+}
+
 static JSContext* _create_new_jsctx( pTHX_ JSRuntime *rt, int preserve_types ) {
     JSContext *ctx = JS_NewContext(rt);
 
@@ -1021,6 +1131,15 @@ std (SV* self_sv)
             case 2:
                 if (!pqjs->added_helpers) {
                     js_std_add_helpers(pqjs->ctx, 0, NULL);
+
+                    // Add atob and btoa functions for base64 encoding/decoding
+                    JSValue global = JS_GetGlobalObject(pqjs->ctx);
+                    JS_SetPropertyStr(pqjs->ctx, global, "atob",
+                        JS_NewCFunction(pqjs->ctx, js_atob, "atob", 1));
+                    JS_SetPropertyStr(pqjs->ctx, global, "btoa",
+                        JS_NewCFunction(pqjs->ctx, js_btoa, "btoa", 1));
+                    JS_FreeValue(pqjs->ctx, global);
+
                     pqjs->added_helpers = true;
                 }
 
