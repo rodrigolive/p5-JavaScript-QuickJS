@@ -57,12 +57,12 @@ SKIP: {
         ok(!$null, 'Null object is falsy');
     };
 
-    subtest 'JS undefined -> Perl Undefined object (preserve_types)' => sub {
+    subtest 'JS undefined -> Perl plain undef (always, even with preserve_types)' => sub {
         my $js = JavaScript::QuickJS->new(preserve_types => 1);
 
         my $undef = $js->eval('undefined');
-        isa_ok($undef, 'JavaScript::QuickJS::Undefined');
-        ok(!$undef, 'Undefined object is falsy');
+        ok(!defined($undef), 'undefined returns plain undef');
+        ok(!$undef, 'plain undef is falsy');
     };
 
     subtest 'Can distinguish null from undefined' => sub {
@@ -71,12 +71,13 @@ SKIP: {
         my $null = $js->eval('null');
         my $undef = $js->eval('undefined');
 
-        isnt(ref($null), ref($undef),
-             'Null and Undefined have different types');
+        # null is blessed, undefined is plain undef
+        ok(defined(ref($null)) && ref($null),
+           'null returns a blessed reference');
+        ok(!defined($undef),
+           'undefined returns plain undef');
         is(ref($null), 'JavaScript::QuickJS::Null',
            'null is Null class');
-        is(ref($undef), 'JavaScript::QuickJS::Undefined',
-           'undefined is Undefined class');
     };
 
     subtest 'Null object round-trips to JS null' => sub {
@@ -98,12 +99,13 @@ SKIP: {
         ok($not_undefined, 'Value is NOT undefined');
     };
 
-    subtest 'Undefined object round-trips to JS undefined' => sub {
+    subtest 'Undefined object still converts to JS undefined for compatibility' => sub {
         eval { require JavaScript::QuickJS::Undefined; 1; } or
             skip 'JavaScript::QuickJS::Undefined not available', 3;
 
         my $js = JavaScript::QuickJS->new(preserve_types => 1);
 
+        # The Undefined class still exists for backward compatibility
         my $perl_undef = JavaScript::QuickJS::Undefined->new();
         $js->set_globals(my_undef => $perl_undef);
 
@@ -206,8 +208,8 @@ subtest 'Object properties with null and undefined' => sub {
 
         isa_ok($obj->{explicit_null}, 'JavaScript::QuickJS::Null',
                'null property');
-        isa_ok($obj->{explicit_undefined}, 'JavaScript::QuickJS::Undefined',
-               'undefined property');
+        ok(!defined($obj->{explicit_undefined}),
+           'undefined property is plain undef');
     }
 };
 

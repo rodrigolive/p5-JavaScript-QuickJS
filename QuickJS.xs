@@ -356,11 +356,11 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, in
             break;
 
         case JS_TAG_UNDEFINED:
-            if (preserve_types) {
-                RETVAL = create_undefined_sv(aTHX_ ctx);
-            } else {
-                RETVAL = &PL_sv_undef;
-            }
+            // Always return plain undef, even with preserve_types
+            // This matches JavaScript::Duktape behavior and provides better
+            // compatibility with Moose and other Perl code that expects plain undef.
+            // JavaScript undefined semantically equals Perl undef ("no value").
+            RETVAL = &PL_sv_undef;
             break;
 
         case JS_TAG_OBJECT:

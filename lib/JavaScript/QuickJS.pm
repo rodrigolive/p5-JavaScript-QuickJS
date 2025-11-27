@@ -292,23 +292,45 @@ JavaScript objects.
 
 =head1 NULL VS UNDEFINED HANDLING
 
-=head2 Breaking Change in Version 0.22
+=head2 Breaking Changes in Version 0.22
 
-Starting with version 0.22, Perl C<undef> converts to JavaScript C<undefined>
-instead of C<null>. This change provides semantic correctness and compatibility
-with JavaScript conventions.
+Starting with version 0.22, there are two important changes:
+
+1. Perl C<undef> converts to JavaScript C<undefined> instead of C<null>
+2. JavaScript C<undefined> B<always> returns plain Perl C<undef>, even with C<preserve_types =E<gt> 1>
+
+These changes provide semantic correctness and improved compatibility with
+Perl frameworks (especially Moose).
 
 =head2 Key Behavior Changes
 
-  | Conversion                           | Before (≤0.21)     | After (≥0.22)      | Why                   |
-  |--------------------------------------|--------------------|--------------------|------------------------|
-  | Perl undef → JS                      | null ❌             | undefined ✅        | Semantic correctness  |
-  | Perl Null object → JS                | N/A ❌              | null ✅             | Explicit null support |
-  | Perl Undefined object → JS           | N/A ❌              | undefined ✅        | Round-trip support    |
-  | JS null → Perl (default)             | undef ✅            | undef ✅            | No change             |
-  | JS undefined → Perl (default)        | undef ✅            | undef ✅            | No change             |
-  | JS null → Perl (preserve_types)      | Null object ✅      | Null object ✅      | No change             |
-  | JS undefined → Perl (preserve_types) | Undefined object ✅ | Undefined object ✅ | No change             |
+  | Conversion                           | Before (≤0.21)      | After (≥0.22)       | Why                          |
+  |--------------------------------------|---------------------|---------------------|------------------------------|
+  | Perl undef → JS                      | null ❌             | undefined ✅        | Semantic correctness         |
+  | Perl Null object → JS                | N/A ❌              | null ✅             | Explicit null support        |
+  | Perl Undefined object → JS           | N/A ❌              | undefined ✅        | Backward compatibility       |
+  | JS null → Perl (default)             | undef ✅            | undef ✅            | No change                    |
+  | JS undefined → Perl (default)        | undef ✅            | undef ✅            | No change                    |
+  | JS null → Perl (preserve_types)      | Null object ✅      | Null object ✅      | No change                    |
+  | JS undefined → Perl (preserve_types) | Undefined object ❌ | plain undef ✅      | Better compat, Moose fix     |
+
+=head2 Why undefined Always Returns Plain undef?
+
+JavaScript C<undefined> now B<always> returns plain Perl C<undef>, even with
+C<preserve_types =E<gt> 1>. This provides:
+
+=over
+
+=item * B<Moose/Type::Tiny compatibility:> Plain C<undef> works with type constraints
+
+=item * B<Performance:> No blessed object overhead for the most common "no value" case
+
+=item * B<Semantic correctness:> JavaScript C<undefined> = Perl C<undef> (both mean "no value")
+
+=back
+
+The L<JavaScript::QuickJS::Undefined> class still exists for backward compatibility
+and will convert to JavaScript C<undefined> when passed to JavaScript.
 
 =head2 Why This Change?
 
@@ -362,16 +384,16 @@ use L<JavaScript::QuickJS::Null>:
         console.log(regular_undef === undefined); // true
     });
 
-With C<preserve_types =E<gt> 1>, JavaScript C<null> and C<undefined> values
-round-trip correctly:
+With C<preserve_types =E<gt> 1>, JavaScript C<null> becomes a blessed object
+while C<undefined> B<always> returns plain C<undef>:
 
     my $js = JavaScript::QuickJS->new(preserve_types => 1);
 
     my $null = $js->eval('null');
     my $undef = $js->eval('undefined');
 
-    ref($null)   # 'JavaScript::QuickJS::Null'
-    ref($undef)  # 'JavaScript::QuickJS::Undefined'
+    ref($null)       # 'JavaScript::QuickJS::Null'
+    defined($undef)  # false (plain undef, not blessed)
 
     # These round-trip back to JavaScript correctly
     $js->set_globals(

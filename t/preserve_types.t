@@ -69,20 +69,21 @@ subtest 'Type preservation enabled' => sub {
     is("$null", '', 'null stringifies to empty string');
     is(0 + $null, 0, 'null numifies to 0');
 
-    # Test undefined
+    # Test undefined (always returns plain undef now, even with preserve_types)
     my $undef = $js->eval('undefined');
-    isa_ok($undef, 'JavaScript::QuickJS::Undefined', 'undefined');
+    ok(!defined($undef), 'undefined returns plain undef');
     ok(!$undef, 'undefined is falsy');
-    is("$undef", '', 'undefined stringifies to empty string');
-    is(0 + $undef, 0, 'undefined numifies to 0');
+    is("" . ($undef // ''), '', 'undefined stringifies to empty string');
+    is(0 + ($undef // 0), 0, 'undefined numifies to 0');
 
-    # Test we CAN distinguish null from undefined
-    isnt(ref($null), ref($undef),
+    # Test we CAN still distinguish null from undefined
+    # null is blessed object, undefined is plain undef
+    isnt(defined(ref($null)) ? ref($null) : 'undef',
+         defined(ref($undef)) ? ref($undef) : 'undef',
          'null and undefined have different types');
     is(ref($null), 'JavaScript::QuickJS::Null',
        'null is Null class');
-    is(ref($undef), 'JavaScript::QuickJS::Undefined',
-       'undefined is Undefined class');
+    ok(!defined($undef), 'undefined is plain undef (not blessed)');
 };
 
 # Test type preservation in objects
@@ -113,8 +114,8 @@ subtest 'Types in objects' => sub {
            'object property false');
     isa_ok($obj->{null_val}, 'JavaScript::QuickJS::Null',
            'object property null');
-    isa_ok($obj->{undef_val}, 'JavaScript::QuickJS::Undefined',
-           'object property undefined');
+    ok(!defined($obj->{undef_val}),
+       'object property undefined is plain undef');
 
     is($obj->{number}, 42, 'number unchanged');
     is($obj->{string}, "hello", 'string unchanged');
@@ -136,7 +137,7 @@ subtest 'Types in arrays' => sub {
     isa_ok($arr->[0], 'boolean', 'array[0] true');
     isa_ok($arr->[1], 'boolean', 'array[1] false');
     isa_ok($arr->[2], 'JavaScript::QuickJS::Null', 'array[2] null');
-    isa_ok($arr->[3], 'JavaScript::QuickJS::Undefined', 'array[3] undefined');
+    ok(!defined($arr->[3]), 'array[3] undefined is plain undef');
     is($arr->[4], 42, 'array[4] number');
     is($arr->[5], "hi", 'array[5] string');
 };
