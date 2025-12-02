@@ -1671,6 +1671,29 @@ call( SV* self_sv, SV* this_sv=&PL_sv_undef, ... )
     OUTPUT:
         RETVAL
 
+SV*
+to_source( SV* self_sv )
+    CODE:
+        perl_qjs_jsobj_s* pqjs = exs_structref_ptr(self_sv);
+        JSContext *ctx = pqjs->ctx;
+
+        JSAtom prop = JS_NewAtom(ctx, "toString");
+
+        JSValue jsret = JS_Invoke(
+            ctx,
+            pqjs->jsobj,
+            prop,
+            0,
+            NULL
+        );
+
+        JS_FreeAtom(ctx, prop);
+
+        RETVAL = _return_jsvalue_or_croak(aTHX_ ctx, jsret);
+
+    OUTPUT:
+        RETVAL
+
 # ----------------------------------------------------------------------
 
 MODULE = JavaScript::QuickJS        PACKAGE = JavaScript::QuickJS::Promise

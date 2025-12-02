@@ -76,6 +76,24 @@ The following methods return their corresponding JS property:
 
 =back
 
+=head1 SERIALIZATION METHODS
+
+=head2 $source = I<OBJ>->to_source()
+
+Returns the JavaScript source code of the function as a string. This is useful
+for serializing functions and recreating them in other VMs.
+
+    my $func = $js->eval('(x) => x * 2');
+    my $source = $func->to_source();  # Returns "function(x) { return x * 2; }"
+
+    # Later, in a new VM:
+    my $new_js = JavaScript::QuickJS->new();
+    my $restored = $new_js->eval($source);
+
+Note that the returned source code representation is determined by QuickJS's
+C<Function.prototype.toString()> implementation and may vary from the original
+source code formatting.
+
 =cut
 
 #----------------------------------------------------------------------
