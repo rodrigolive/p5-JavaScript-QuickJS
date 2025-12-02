@@ -11,3 +11,4 @@ Makefile.old
 *.tar.gz
 .agent/
 tests/
+IMPLEMENTATION_SUMMARY.md

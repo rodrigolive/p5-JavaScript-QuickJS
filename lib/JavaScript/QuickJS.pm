@@ -178,10 +178,50 @@ Returns I<OBJ>.
 
 =head2 $obj = I<OBJ>->unset_module_base()
 
-Restores QuickJS’s default directory for ES6 module imports
-(as of this writing, it’s the process’s current directory).
+Restores QuickJS's default directory for ES6 module imports
+(as of this writing, it's the process's current directory).
 
 Returns I<OBJ>.
+
+=head2 I<OBJ>->clear_perl_callbacks()
+
+Explicitly clears all Perl callback references held by this JavaScript runtime.
+This method is useful for complex scenarios involving nested closures and
+circular references between Perl and JavaScript.
+
+Call this method BEFORE destroying the JavaScript::QuickJS object to ensure
+clean shutdown without GC assertion warnings:
+
+    my $js = JavaScript::QuickJS->new();
+
+    # ... use $js, set globals with Perl callbacks, etc ...
+
+    # Clean up before destruction
+    $js->clear_perl_callbacks();
+
+    undef $js;  # Clean destruction, no assertions
+
+B<When to use:>
+
+=over 4
+
+=item * Complex object graphs with nested closures
+
+=item * Promise-like structures that hold callback references
+
+=item * Circular references between Perl and JavaScript
+
+=item * Any scenario where GC assertion warnings appear
+
+=back
+
+B<Note:> After calling this method, any JavaScript functions that referenced
+Perl callbacks will no longer work correctly. Only call this immediately
+before destroying the runtime.
+
+This method is part of a two-part enhancement to handle complex garbage
+collection scenarios. In most cases, the automatic cleanup (Part 1) is
+sufficient and you won't need to call this method explicitly.
 
 =cut
 
