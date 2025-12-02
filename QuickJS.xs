@@ -1384,6 +1384,62 @@ clear_perl_callbacks(SV* self_sv)
                  "may not fully prevent GC assertions");
         }
 
+SV*
+compile (SV* self_sv, SV* js_code_sv)
+    CODE:
+        perl_qjs_s* pqjs = exs_structref_ptr(self_sv);
+        JSContext *ctx = pqjs->ctx;
+
+        STRLEN js_code_len;
+        const char* js_code = SvPVutf8(js_code_sv, js_code_len);
+
+        int eval_flags = JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY | JS_EVAL_FLAG_STRICT;
+
+        JSValue compiled = JS_Eval(ctx, js_code, js_code_len, "", eval_flags);
+
+        if (JS_IsException(compiled)) {
+            RETVAL = _return_jsvalue_or_croak(aTHX_ ctx, compiled);
+        }
+        else {
+            /* Evaluate the bytecode to make it a real function */
+            /* JS_EvalFunction takes ownership of compiled */
+            JSValue func = JS_EvalFunction(ctx, compiled);
+            RETVAL = _return_jsvalue_or_croak(aTHX_ ctx, func);
+        }
+
+    OUTPUT:
+        RETVAL
+
+SV*
+from_bytecode (SV* self_sv, SV* bytecode_sv)
+    CODE:
+        perl_qjs_s* pqjs = exs_structref_ptr(self_sv);
+        JSContext *ctx = pqjs->ctx;
+
+        STRLEN bytecode_len;
+        const uint8_t* bytecode = (const uint8_t*)SvPVbyte(bytecode_sv, bytecode_len);
+
+        JSValue deserialized = JS_ReadObject(
+            ctx,
+            bytecode,
+            bytecode_len,
+            JS_READ_OBJ_BYTECODE
+        );
+
+        if (JS_IsException(deserialized)) {
+            RETVAL = _return_jsvalue_or_croak(aTHX_ ctx, deserialized);
+        }
+        else {
+            /* Now evaluate the bytecode to make it executable */
+            JSValue func = JS_EvalFunction(ctx, deserialized);
+
+            /* Note: JS_EvalFunction takes ownership of deserialized, so don't free it */
+            RETVAL = _return_jsvalue_or_croak(aTHX_ ctx, func);
+        }
+
+    OUTPUT:
+        RETVAL
+
 # ----------------------------------------------------------------------
 
 MODULE = JavaScript::QuickJS        PACKAGE = JavaScript::QuickJS::Date
@@ -1690,6 +1746,68 @@ to_source( SV* self_sv )
         JS_FreeAtom(ctx, prop);
 
         RETVAL = _return_jsvalue_or_croak(aTHX_ ctx, jsret);
+
+    OUTPUT:
+        RETVAL
+
+SV*
+to_bytecode( SV* self_sv )
+    CODE:
+        perl_qjs_jsobj_s* pqjs = exs_structref_ptr(self_sv);
+        JSContext *ctx = pqjs->ctx;
+
+        /* Get the function source code */
+        JSAtom prop = JS_NewAtom(ctx, "toString");
+        JSValue source_val = JS_Invoke(ctx, pqjs->jsobj, prop, 0, NULL);
+        JS_FreeAtom(ctx, prop);
+
+        if (JS_IsException(source_val)) {
+            RETVAL = _return_jsvalue_or_croak(aTHX_ ctx, source_val);
+        }
+        else {
+            STRLEN source_len;
+            const char* source_str = JS_ToCStringLen(ctx, &source_len, source_val);
+
+            /* QuickJS's Function.toString() returns the complete function source */
+            /* Compile it to bytecode (JS_EVAL_FLAG_COMPILE_ONLY) */
+            int eval_flags = JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY;
+            JSValue compiled = JS_Eval(ctx, source_str, source_len, "<serialization>", eval_flags);
+
+            JS_FreeCString(ctx, source_str);
+            JS_FreeValue(ctx, source_val);
+
+            if (JS_IsException(compiled)) {
+                RETVAL = _return_jsvalue_or_croak(aTHX_ ctx, compiled);
+            }
+            else {
+                /* Serialize the compiled bytecode */
+                size_t bytecode_len;
+                uint8_t *bytecode = JS_WriteObject(
+                    ctx,
+                    &bytecode_len,
+                    compiled,
+                    JS_WRITE_OBJ_BYTECODE
+                );
+
+                JS_FreeValue(ctx, compiled);
+
+                if (!bytecode) {
+                    /* Get the error from the context */
+                    JSValue exc = JS_GetException(ctx);
+                    SV* err;
+                    if (!JS_IsNull(exc)) {
+                        err = _get_exception_from_jsvalue(aTHX_ ctx, exc);
+                    }
+                    else {
+                        err = newSVpvs("JS_WriteObject failed to serialize bytecode");
+                    }
+                    croak_sv(err);
+                }
+
+                RETVAL = newSVpvn((const char*)bytecode, bytecode_len);
+                js_free(ctx, bytecode);
+            }
+        }
 
     OUTPUT:
         RETVAL

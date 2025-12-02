@@ -94,6 +94,48 @@ Note that the returned source code representation is determined by QuickJS's
 C<Function.prototype.toString()> implementation and may vary from the original
 source code formatting.
 
+=head2 $bytecode = I<OBJ>->to_bytecode()
+
+Serializes the function to QuickJS bytecode format. Returns a binary string
+that can be saved to disk or database and later restored with C<from_bytecode()>.
+
+This is more efficient than C<to_source()> for storing and transferring functions,
+and preserves the exact compiled bytecode without re-parsing.
+
+    my $func = $js->eval('(x) => x * 2');
+    my $bytecode = $func->to_bytecode();  # Binary string
+
+    # Save to file
+    open my $fh, '>', 'function.bytecode';
+    binmode $fh;
+    print $fh $bytecode;
+    close $fh;
+
+    # Later, in a new VM:
+    my $new_js = JavaScript::QuickJS->new();
+    open my $fh, '<', 'function.bytecode';
+    binmode $fh;
+    my $loaded_bytecode = do { local $/; <$fh> };
+    close $fh;
+
+    my $restored = $new_js->from_bytecode($loaded_bytecode);
+    my $result = $restored->(5);  # Returns 10
+
+B<Important Notes:>
+
+=over 4
+
+=item * Bytecode is specific to QuickJS and may not be compatible across different
+QuickJS versions.
+
+=item * The bytecode format is binary and should be handled as a byte string, not
+a character string.
+
+=item * Functions with closures over external variables may not serialize correctly
+if those variables are not available in the new context.
+
+=back
+
 =cut
 
 #----------------------------------------------------------------------
