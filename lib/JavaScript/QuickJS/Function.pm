@@ -2,6 +2,7 @@ package JavaScript::QuickJS::Function;
 
 use strict;
 use warnings;
+use Scalar::Util qw(blessed);
 
 =encoding utf-8
 
@@ -13,7 +14,7 @@ JavaScript::QuickJS::Function - JavaScript `Function` in Perl
 
     my $func = JavaScript::QuickJS->new()->eval("() => 123");
 
-    print $func->();    # prints “123”; note overloading :)
+    print $func->();    # prints "123"; note overloading :)
 
 =head1 DESCRIPTION
 
@@ -29,6 +30,22 @@ For convenience, instances of this class are callable as Perl code references.
 This is equivalent to a C<call()> with $this_sv (see below) set to undef.
 
 See the L</SYNOPSIS> above for an example.
+
+=head1 AUTOLOAD SUPPORT
+
+For convenience, method calls on Function instances (which may also be objects
+in JavaScript, as functions can have properties) automatically:
+
+1. Get the property with the method name from the function object
+2. If the property is a function, call it with the original function as C<this>
+3. Otherwise, return the property value
+
+This allows treating JavaScript functions-with-properties naturally:
+
+    my $func = $js->eval('Object.assign(() => 42, { meta: "data", getInfo() { return this.meta; } })');
+    $func->();           # Returns 42 (function call via overload)
+    $func->meta;         # Returns "data" (property access via AUTOLOAD)
+    $func->getInfo();    # Returns "data" (method call via AUTOLOAD)
 
 =head1 INVOCATION METHODS
 
@@ -186,6 +203,33 @@ sub as_coderef {
 
     # Return a plain CODE ref (not blessed)
     return sub { $self->call(undef, @_) };
+}
+
+#----------------------------------------------------------------------
+
+our $AUTOLOAD;
+
+sub AUTOLOAD {
+    my ($self, @args) = @_;
+
+    # Extract method name from fully qualified name
+    my $method = $AUTOLOAD;
+    $method =~ s/.*:://;
+
+    # Don't handle DESTROY
+    return if $method eq 'DESTROY';
+
+    # Get the property from the JavaScript object
+    # Note: get_property is an XS method and won't trigger AUTOLOAD
+    my $prop = $self->get_property($method);
+
+    # If it's a Function, call it with $self as 'this'
+    if (blessed($prop) && $prop->isa('JavaScript::QuickJS::Function')) {
+        return $prop->call($self, @args);
+    }
+
+    # Otherwise just return the property value
+    return $prop;
 }
 
 1;

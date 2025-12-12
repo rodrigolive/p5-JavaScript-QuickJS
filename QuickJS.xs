@@ -1662,9 +1662,51 @@ DESTROY( SV* self_sv )
 
         _free_jsctx(aTHX_ pqjs->ctx);
 
+SV*
+get_property( SV* self_sv, SV* prop_name_sv )
+    CODE:
+        perl_qjs_jsobj_s* pqjs = exs_structref_ptr(self_sv);
+        ctx_opaque_s* ctxdata = JS_GetContextOpaque(pqjs->ctx);
+
+        STRLEN prop_len;
+        const char* prop_name = SvPVutf8(prop_name_sv, prop_len);
+
+        JSValue prop_val = JS_GetPropertyStr(pqjs->ctx, pqjs->jsobj, prop_name);
+
+        SV* err = NULL;
+        RETVAL = _JSValue_to_SV(aTHX_ pqjs->ctx, prop_val, &err, ctxdata->preserve_types);
+
+        JS_FreeValue(pqjs->ctx, prop_val);
+
+        if (err) croak_sv(err);
+
+    OUTPUT:
+        RETVAL
+
 # ----------------------------------------------------------------------
 
 MODULE = JavaScript::QuickJS        PACKAGE = JavaScript::QuickJS::Function
+
+SV*
+get_property( SV* self_sv, SV* prop_name_sv )
+    CODE:
+        perl_qjs_jsobj_s* pqjs = exs_structref_ptr(self_sv);
+        ctx_opaque_s* ctxdata = JS_GetContextOpaque(pqjs->ctx);
+
+        STRLEN prop_len;
+        const char* prop_name = SvPVutf8(prop_name_sv, prop_len);
+
+        JSValue prop_val = JS_GetPropertyStr(pqjs->ctx, pqjs->jsobj, prop_name);
+
+        SV* err = NULL;
+        RETVAL = _JSValue_to_SV(aTHX_ pqjs->ctx, prop_val, &err, ctxdata->preserve_types);
+
+        JS_FreeValue(pqjs->ctx, prop_val);
+
+        if (err) croak_sv(err);
+
+    OUTPUT:
+        RETVAL
 
 SV*
 _give_self( SV* self_sv, ... )
