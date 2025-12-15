@@ -353,7 +353,10 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, in
             STMT_START {
                 STRLEN strlen;
                 const char* str = JS_ToCStringLen(ctx, &strlen, jsval);
-                RETVAL = newSVpvn_flags(str, strlen, SVf_UTF8);
+                /* JS_ToCStringLen returns UTF-8 encoded bytes.
+                   Create SV and mark it as UTF-8. */
+                RETVAL = newSVpvn(str, strlen);
+                SvUTF8_on(RETVAL);
                 JS_FreeCString(ctx, str);
             } STMT_END;
             break;
@@ -902,7 +905,10 @@ static SV* _get_exception_from_jsvalue(pTHX_ JSContext* ctx, JSValue jsret) {
     STRLEN strlen;
     const char* str = JS_ToCStringLen(ctx, &strlen, jserr);
 
-    err = newSVpvn_flags(str, strlen, SVf_UTF8);
+    /* JS_ToCStringLen returns UTF-8 encoded bytes.
+       Create SV and mark it as UTF-8. */
+    err = newSVpvn(str, strlen);
+    SvUTF8_on(err);
 
     JS_FreeCString(ctx, str);
     JS_FreeValue(ctx, jserr);
@@ -1302,7 +1308,9 @@ eval (SV* self_sv, SV* js_code_sv)
         JSContext *ctx = pqjs->ctx;
 
         STRLEN js_code_len;
-        const char* js_code = SvPVutf8(js_code_sv, js_code_len);
+        /* Get the raw bytes. Assume they are UTF-8 encoded.
+           Don't use SvPV() as it will double-encode UTF-8 bytes. */
+        const char* js_code = SvPV(js_code_sv, js_code_len);
 
         int eval_flags = ix ? JS_EVAL_TYPE_MODULE : JS_EVAL_TYPE_GLOBAL;
         eval_flags |= JS_EVAL_FLAG_STRICT;
@@ -1391,7 +1399,7 @@ compile (SV* self_sv, SV* js_code_sv)
         JSContext *ctx = pqjs->ctx;
 
         STRLEN js_code_len;
-        const char* js_code = SvPVutf8(js_code_sv, js_code_len);
+        const char* js_code = SvPV(js_code_sv, js_code_len);
 
         int eval_flags = JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY | JS_EVAL_FLAG_STRICT;
 
