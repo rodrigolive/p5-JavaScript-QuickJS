@@ -242,6 +242,37 @@ static SV* create_undefined_sv(pTHX_ JSContext *ctx) {
     return result;
 }
 
+/* Helper: Generate unique key for object pointer in seen hash */
+static inline void _jsval_ptr_key(char* buf, size_t bufsize, JSValue jsval) {
+    snprintf(buf, bufsize, "%p", JS_VALUE_GET_PTR(jsval));
+}
+
+/* Helper: Check if object already seen, return existing SV if found */
+static inline SV** _lookup_seen(pTHX_ HV* seen, JSValue jsval) {
+    if (!seen) return NULL;
+
+    char key[32];
+    _jsval_ptr_key(key, sizeof(key), jsval);
+
+    return hv_fetch(seen, key, strlen(key), 0);
+}
+
+/* Helper: Mark object as seen by storing its SV reference */
+static inline void _mark_seen(pTHX_ HV* seen, JSValue jsval, SV* sv) {
+    if (!seen) return;
+
+    char key[32];
+    _jsval_ptr_key(key, sizeof(key), jsval);
+
+    (void)hv_store(seen, key, strlen(key), SvREFCNT_inc(sv), 0);
+}
+
+/* Internal implementations with cycle detection */
+static SV* _JSValue_to_SV_impl (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types, HV* seen);
+static inline SV* _JSValue_object_to_SV_impl (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types, HV* seen);
+static inline SV* _JSValue_array_to_SV_impl (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types, HV* seen);
+
+/* Public wrapper that initializes seen hash */
 static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types);
 
 static inline SV* _JSValue_special_object_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, const char* class) {
@@ -262,8 +293,15 @@ static inline SV* _JSValue_special_object_to_SV (pTHX_ JSContext* ctx, JSValue j
     return sv;
 }
 
-static inline SV* _JSValue_object_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types) {
+static inline SV* _JSValue_object_to_SV_impl (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types, HV* seen) {
     assert(!*err_svp);
+
+    /* Check if we've seen this object before (cycle detection) */
+    SV** existing = _lookup_seen(aTHX_ seen, jsval);
+    if (existing && *existing) {
+        /* Cycle detected - return the existing Perl reference */
+        return SvREFCNT_inc(*existing);
+    }
 
     JSPropertyEnum *tab_atom;
     uint32_t tab_atom_count;
@@ -273,7 +311,12 @@ static inline SV* _JSValue_object_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV
     PERL_UNUSED_VAR(propnameserr);
     assert(!propnameserr);
 
+    /* Create the hash and get its reference */
     HV* hv = newHV();
+    SV* hv_ref = newRV_noinc((SV*) hv);
+
+    /* Register it in seen hash BEFORE recursing into properties */
+    _mark_seen(aTHX_ seen, jsval, hv_ref);
 
     for(int i = 0; i < tab_atom_count; i++) {
         JSValue key = JS_AtomToString(ctx, tab_atom[i].atom);
@@ -282,7 +325,8 @@ static inline SV* _JSValue_object_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV
 
         JSValue value = JS_GetProperty(ctx, jsval, tab_atom[i].atom);
 
-        SV* val_sv = _JSValue_to_SV(aTHX_ ctx, value, err_svp, preserve_types);
+        /* Use _impl version to pass seen hash through recursion */
+        SV* val_sv = _JSValue_to_SV_impl(aTHX_ ctx, value, err_svp, preserve_types, seen);
 
         if (val_sv) {
             hv_store(hv, keystr, -strlen, val_sv, 0);
@@ -299,27 +343,40 @@ static inline SV* _JSValue_object_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV
     js_free(ctx, tab_atom);
 
     if (*err_svp) {
-        SvREFCNT_dec( (SV*) hv );
+        SvREFCNT_dec(hv_ref);
         return NULL;
     }
 
-    return newRV_noinc((SV*) hv);
+    return hv_ref;
 }
 
-static inline SV* _JSValue_array_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types) {
+static inline SV* _JSValue_array_to_SV_impl (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types, HV* seen) {
+    /* Check if we've seen this array before (cycle detection) */
+    SV** existing = _lookup_seen(aTHX_ seen, jsval);
+    if (existing && *existing) {
+        /* Cycle detected - return the existing Perl reference */
+        return SvREFCNT_inc(*existing);
+    }
+
     JSValue jslen = JS_GetPropertyStr(ctx, jsval, "length");
     uint32_t len;
     JS_ToUint32(ctx, &len, jslen);
     JS_FreeValue(ctx, jslen);
 
+    /* Create the array and get its reference */
     AV* av = newAV();
+    SV* av_ref = newRV_noinc((SV*) av);
+
+    /* Register it in seen hash BEFORE recursing into elements */
+    _mark_seen(aTHX_ seen, jsval, av_ref);
 
     if (len) {
         av_fill( av, len - 1 );
         for (uint32_t i=0; i<len; i++) {
             JSValue jsitem = JS_GetPropertyUint32(ctx, jsval, i);
 
-            SV* val_sv = _JSValue_to_SV(aTHX_ ctx, jsitem, err_svp, preserve_types);
+            /* Use _impl version to pass seen hash through recursion */
+            SV* val_sv = _JSValue_to_SV_impl(aTHX_ ctx, jsitem, err_svp, preserve_types, seen);
 
             if (val_sv) av_store( av, i, val_sv );
 
@@ -330,15 +387,16 @@ static inline SV* _JSValue_array_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV*
     }
 
     if (*err_svp) {
-        SvREFCNT_dec((SV*) av);
+        SvREFCNT_dec(av_ref);
         return NULL;
     }
 
-    return newRV_noinc((SV*) av);
+    return av_ref;
 }
 
 /* NO JS exceptions allowed here! */
-static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types) {
+/* Internal implementation with cycle detection support */
+static SV* _JSValue_to_SV_impl (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types, HV* seen) {
     assert(!*err_svp);
 
     SV* RETVAL;
@@ -425,7 +483,7 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, in
                 RETVAL = func_sv;
             }
             else if (JS_IsArray(ctx, jsval)) {
-                RETVAL = _JSValue_array_to_SV(aTHX_ ctx, jsval, err_svp, preserve_types);
+                RETVAL = _JSValue_array_to_SV_impl(aTHX_ ctx, jsval, err_svp, preserve_types, seen);
             }
             else {
 
@@ -441,7 +499,7 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, in
                     RETVAL = _JSValue_special_object_to_SV(aTHX_ ctx, jsval, err_svp, PQJS_PROMISE_CLASS);
                 }
                 else {
-                    RETVAL = _JSValue_object_to_SV(aTHX_ ctx, jsval, err_svp, preserve_types);
+                    RETVAL = _JSValue_object_to_SV_impl(aTHX_ ctx, jsval, err_svp, preserve_types, seen);
                 }
             }
 
@@ -463,6 +521,14 @@ static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, in
     }
 
     return RETVAL;
+}
+
+/* Public wrapper that initializes seen hash for cycle detection */
+static SV* _JSValue_to_SV (pTHX_ JSContext* ctx, JSValue jsval, SV** err_svp, int preserve_types) {
+    HV* seen = newHV();
+    SV* result = _JSValue_to_SV_impl(aTHX_ ctx, jsval, err_svp, preserve_types, seen);
+    SvREFCNT_dec((SV*)seen);
+    return result;
 }
 
 static inline void _ctx_add_sv(pTHX_ JSContext* ctx, SV* sv) {
@@ -939,8 +1005,10 @@ static inline SV* _return_jsvalue_or_croak(pTHX_ JSContext* ctx, JSValue jsret) 
 
 static void _free_jsctx(pTHX_ JSContext* ctx) {
     ctx_opaque_s* ctxdata = JS_GetContextOpaque(ctx);
+    fprintf(stderr, "[DEBUG XS] _free_jsctx: ctx=%p, refcount before decrement=%d\n", (void*)ctx, ctxdata->refcount);
 
     if (--ctxdata->refcount == 0) {
+        fprintf(stderr, "[DEBUG XS] _free_jsctx: freeing ctx=%p\n", (void*)ctx);
         JS_FreeValue(ctx, ctxdata->regexp_jsvalue);
         JS_FreeValue(ctx, ctxdata->date_jsvalue);
         JS_FreeValue(ctx, ctxdata->promise_jsvalue);
@@ -1694,6 +1762,15 @@ get_property( SV* self_sv, SV* prop_name_sv )
 # ----------------------------------------------------------------------
 
 MODULE = JavaScript::QuickJS        PACKAGE = JavaScript::QuickJS::Function
+
+void
+DESTROY( SV* self_sv )
+    CODE:
+        perl_qjs_jsobj_s* pqjs = exs_structref_ptr(self_sv);
+
+        JS_FreeValue(pqjs->ctx, pqjs->jsobj);
+
+        _free_jsctx(aTHX_ pqjs->ctx);
 
 SV*
 get_property( SV* self_sv, SV* prop_name_sv )
